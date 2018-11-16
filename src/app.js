@@ -314,7 +314,7 @@ module.exports.save_user_config = (event, context, cb) => {
 
         return Promise.all([
           saveUserBasicInfo(userInfo, bucket, userInfoKeyTpl),
-          updateAttendees(data.attendees, bucket, attendeesKey),
+          updateAttendees(data.info.name, data.attendees, bucket, attendeesKey),
         ]);
       }).then(() => {
         cb(null, { statusCode: 200, headers: { 'Access-Control-Allow-Origin': '*' }, body: 'success' });

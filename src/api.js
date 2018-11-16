@@ -282,11 +282,23 @@ const addAttendees = (newAttendees, bucket, attendeesKey) =>
     return writeObjectToS3(bucket, attendeesKey, allAttendees);
   });
 
-const updateAttendees = (newAttendees, bucket, attendeesKey) => {
-  console.log('New attendees are ');
-  console.log(newAttendees);
-  return writeObjectToS3(bucket, attendeesKey, newAttendees);
-};
+// Old data format: [{outlook: '', google: []}]
+// New data format: [{username:'x', attendees: {outlook: '', google: []}}]
+const updateAttendees = (username, attendees, bucket, attendeesKey) =>
+  readObjectFromS3(bucket, attendeesKey)
+  .catch(() => Promise.resolve([]))
+  .then((oldAttendees) => {
+    console.log('Old attendees are ');
+    console.log(oldAttendees);
+    const newAttendees = {
+      username,
+      attendees
+    };
+    const allAttendees = _.uniqBy([newAttendees, ...oldAttendees], ele => ele.username);
+    console.log('All attendees are ');
+    console.log(allAttendees);
+    return writeObjectToS3(bucket, attendeesKey, allAttendees);
+  });
 
 const deleteAttendees = (attendees, bucket, attendeesKey) =>
   readObjectFromS3(bucket, attendeesKey)
@@ -374,7 +386,7 @@ const processMessage = (server, message, attendees) => getAvailableRoom(message.
         message.token.token.access_token,
       )).catch(() => {
         sendNoRoomEmail(server, message.event, attendees).catch((err) => {
-          console.log('Fialed to send email');
+          console.log('Failed to send email');
           console.log(server);
           console.log(message.event);
           console.log(err);
@@ -385,6 +397,7 @@ const processAllValidEvents = (bucket, processedEventsKey, totalEvents, attendee
   writeObjectToS3(bucket, processedEventsKey, totalEvents.allEvents)
     .then(() => readObjectFromS3(bucket, attendeesKey)
         .catch(() => Promise.resolve([]))
+        .then(allAttendees => _.flatMap(allAttendees, data => data.attendees))
         .then(attendees =>
           _.reduce(totalEvents.validEvents,
             (sum, message) => sum.then(() => processMessage(server, message, attendees)),
@@ -473,7 +486,8 @@ const getUserInfo = (user,
     readObjectFromS3(bucket, userInfoKey),
     readObjectFromS3(bucket, attendeesKey).catch(() => []),
   ]).then((data) => {
-    const [googleIsAvailable, outlookIsAvailable, info, attendees] = data;
+    const [googleIsAvailable, outlookIsAvailable, info, allAttendees] = data;
+    const attendees = _.get(allAttendees.find(data => data.username === user), 'attendees', []);
     return {
       info,
       googleIsAvailable,
